@@ -27,11 +27,17 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * 消费者锁管理，这里的队列锁，不是真正意义上的锁，而是看消费者是否持有对队列的关联关系，关联则说明持有，否则不持有。
+ */
 public class RebalanceLockManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.REBALANCE_LOCK_LOGGER_NAME);
     private final static long REBALANCE_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
         "rocketmq.broker.rebalance.lockMaxLiveTime", "60000"));
     private final Lock lock = new ReentrantLock();
+    /**
+     * 以消费组维度，对消息队列进行加锁
+     */
     private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, LockEntry>> mqLockTable =
         new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, LockEntry>>(1024);
 
@@ -133,6 +139,7 @@ public class RebalanceLockManager {
                 try {
                     ConcurrentHashMap<MessageQueue, LockEntry> groupValue = this.mqLockTable.get(group);
                     if (null == groupValue) {
+                        //为空表示消费组是第一次尝试给队列加锁
                         groupValue = new ConcurrentHashMap<>(32);
                         this.mqLockTable.put(group, groupValue);
                     }
@@ -140,6 +147,7 @@ public class RebalanceLockManager {
                     for (MessageQueue mq : notLockedMqs) {
                         LockEntry lockEntry = groupValue.get(mq);
                         if (null == lockEntry) {
+                            //为空表示消费组要消费的队列没有加过锁，将当前请求的消费者ID作为锁的持有者
                             lockEntry = new LockEntry();
                             lockEntry.setClientId(clientId);
                             groupValue.put(mq, lockEntry);
@@ -149,15 +157,17 @@ public class RebalanceLockManager {
                                 clientId,
                                 mq);
                         }
-
+                        //如果lockEntry是被当前请求的消费者ID持有，则更新锁时间，说明锁可以重入。
                         if (lockEntry.isLocked(clientId)) {
                             lockEntry.setLastUpdateTimestamp(System.currentTimeMillis());
                             lockedMqs.add(mq);
                             continue;
                         }
 
+                        //走到这里，说明lockEntry不是被当前请求的消费者ID持有
                         String oldClientId = lockEntry.getClientId();
 
+                        //如果之前持有锁的消费者ID已经过期，则更新为当前请求的消费者ID
                         if (lockEntry.isExpired()) {
                             lockEntry.setClientId(clientId);
                             lockEntry.setLastUpdateTimestamp(System.currentTimeMillis());

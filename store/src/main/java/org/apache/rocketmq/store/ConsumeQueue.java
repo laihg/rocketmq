@@ -25,6 +25,14 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 消费者实际关心的是一个topic下所有的消息，但由于同一主题下的消息是不连续的存放在CommitLog中，
+ * 如果消费者直接从消息存储文件（commitlog）中去遍历查找订阅主题下的消息，效率将极其低下，
+ * RocketMQ 为了适应消息消费的检索需求，提高检索性能，设计了消息消费队列文件（Consumequeue），
+ * 该文件可以看成是 Commitlog 关于消息消费的“索引”文件， consumequeue 的第一级目录为消息主题，第二级目录为主题的消息队列
+ *
+ * 一个消费者队列下可以有多个文件，由{@link MappedFileQueue}管理。
+ */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -32,9 +40,17 @@ public class ConsumeQueue {
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
     private final DefaultMessageStore defaultMessageStore;
-
+    /**
+     * topic队列下所有的消息文件
+     */
     private final MappedFileQueue mappedFileQueue;
+    /**
+     * topic名称
+     */
     private final String topic;
+    /**
+     * 队列ID
+     */
     private final int queueId;
     private final ByteBuffer byteBufferIndex;
 
@@ -56,7 +72,12 @@ public class ConsumeQueue {
 
         this.topic = topic;
         this.queueId = queueId;
-
+        /**
+         * 存放消息的队列路径 C:\Users\Administrator\store\consumequeue\coupon_topic\3
+         * storePath = C:\Users\Administrator\store\consumequeue
+         * topic = coupon_topic
+         * queueId = 3
+         */
         String queueDir = this.storePath
             + File.separator + topic
             + File.separator + queueId;
@@ -152,6 +173,11 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据时间戳查找偏移量
+     * @param timestamp
+     * @return
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
@@ -166,6 +192,7 @@ public class ConsumeQueue {
                 ByteBuffer byteBuffer = sbr.getByteBuffer();
                 high = byteBuffer.limit() - CQ_STORE_UNIT_SIZE;
                 try {
+                    //使用二分查找算法查询
                     while (high >= low) {
                         midOffset = (low + high) / (2 * CQ_STORE_UNIT_SIZE) * CQ_STORE_UNIT_SIZE;
                         byteBuffer.position(midOffset);
@@ -180,15 +207,19 @@ public class ConsumeQueue {
                         long storeTime =
                             this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
                         if (storeTime < 0) {
+                            //如果存储时间小于0，消息为无效消息，直接返回0
                             return 0;
                         } else if (storeTime == timestamp) {
+                            //如果存储时间戳等于待查找时间戳，说明查找到匹配消息，跳出循环
                             targetOffset = midOffset;
                             break;
                         } else if (storeTime > timestamp) {
+                            //如果存储时间戳大于待查找时间戳，说明待查找信息小于midOffset ，则设置high为midOffset并设置rightIndexValue等于midOffset
                             high = midOffset - CQ_STORE_UNIT_SIZE;
                             rightOffset = midOffset;
                             rightIndexValue = storeTime;
                         } else {
+                            //如果存储时间小于待查找时间戳，说明待查找消息在大于midOffset，则设置low为midOffset并设置leftOffset等于midOffset
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             leftIndexValue = storeTime;
@@ -488,9 +519,16 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据startIndex获取消息消费队列中的数据
+     * @param startIndex
+     * @return
+     */
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
         int mappedFileSize = this.mappedFileSize;
+        //获取物理偏移量
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
+        //如果物理偏移量 大于等于 最小逻辑偏移量则查找对应的消息文件
         if (offset >= this.getMinLogicOffset()) {
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
             if (mappedFile != null) {

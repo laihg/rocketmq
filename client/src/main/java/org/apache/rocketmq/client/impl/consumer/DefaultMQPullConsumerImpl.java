@@ -649,9 +649,11 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
                 } else {
                     switch (this.defaultMQPullConsumer.getMessageModel()) {
                         case BROADCASTING:
+                            //广播模式下的消费位移从本地文件中读取
                             this.offsetStore = new LocalFileOffsetStore(this.mQClientFactory, this.defaultMQPullConsumer.getConsumerGroup());
                             break;
                         case CLUSTERING:
+                            //集群模式下的消费位移从Broker中读取
                             this.offsetStore = new RemoteBrokerOffsetStore(this.mQClientFactory, this.defaultMQPullConsumer.getConsumerGroup());
                             break;
                         default:

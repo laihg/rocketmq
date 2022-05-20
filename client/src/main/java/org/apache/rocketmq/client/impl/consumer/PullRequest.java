@@ -19,10 +19,26 @@ package org.apache.rocketmq.client.impl.consumer;
 import org.apache.rocketmq.common.message.MessageQueue;
 
 public class PullRequest {
+    /**
+     * 消费者群组名称
+     */
     private String consumerGroup;
+    /**
+     * 要拉取哪个消息队列
+     */
     private MessageQueue messageQueue;
+    /**
+     * 消息处理队列，从Broker拉取到的消息先存人ProccessQueue，然后再提交到消费者消费线程池消费
+     */
     private ProcessQueue processQueue;
+    /**
+     * 下次要消费的位移
+     */
     private long nextOffset;
+
+    /**
+     * 是否被锁定
+     */
     private boolean previouslyLocked = false;
 
     public boolean isPreviouslyLocked() {

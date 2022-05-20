@@ -111,31 +111,92 @@ public class BrokerController {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final InternalLogger LOG_PROTECTION = InternalLoggerFactory.getLogger(LoggerName.PROTECTION_LOGGER_NAME);
     private static final InternalLogger LOG_WATER_MARK = InternalLoggerFactory.getLogger(LoggerName.WATER_MARK_LOGGER_NAME);
+    /**
+     * Broker配置信息
+     */
     private final BrokerConfig brokerConfig;
+    /**
+     * Netty服务端配置，提供给Producer,Consumer服务
+     */
     private final NettyServerConfig nettyServerConfig;
+    /**
+     * Netty客户端配置，Broker自身对外部的请求
+     */
     private final NettyClientConfig nettyClientConfig;
+    /**
+     * 消息持久化配置
+     */
     private final MessageStoreConfig messageStoreConfig;
+    /**
+     * 消费者偏移量管理器
+     */
     private final ConsumerOffsetManager consumerOffsetManager;
+    /**
+     * 消费者管理器
+     */
     private final ConsumerManager consumerManager;
+    /**
+     * 消费者过滤管理器
+     */
     private final ConsumerFilterManager consumerFilterManager;
+    /**
+     * 生产者管理器
+     */
     private final ProducerManager producerManager;
+    /**
+     * 客户端心跳服务
+     * 剔除超时未发送心跳的生产者，消费者，NameSrv
+     */
     private final ClientHousekeepingService clientHousekeepingService;
+    /**
+     * 消费者拉取消息处理器
+     */
     private final PullMessageProcessor pullMessageProcessor;
+    /**
+     * note 待学习
+     */
     private final PullRequestHoldService pullRequestHoldService;
+    /**
+     * 消息到达监听器
+     */
     private final MessageArrivingListener messageArrivingListener;
+    /**
+     *
+     */
     private final Broker2Client broker2Client;
+    /**
+     * 订阅组管理器
+     */
     private final SubscriptionGroupManager subscriptionGroupManager;
+    /**
+     * 消费者ID是否变更
+     */
     private final ConsumerIdsChangeListener consumerIdsChangeListener;
+    /**
+     * 平衡锁管理器
+     */
     private final RebalanceLockManager rebalanceLockManager = new RebalanceLockManager();
+    /**
+     * Broker作为客户端向外(NameSrv)发送请求
+     */
     private final BrokerOuterAPI brokerOuterAPI;
+    /**
+     * 定时调度线程池
+     */
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
         "BrokerControllerScheduledThread"));
+    /**
+     * Broker从节点同步器
+     */
     private final SlaveSynchronize slaveSynchronize;
     private final BlockingQueue<Runnable> sendThreadPoolQueue;
     private final BlockingQueue<Runnable> pullThreadPoolQueue;
     private final BlockingQueue<Runnable> replyThreadPoolQueue;
     private final BlockingQueue<Runnable> queryThreadPoolQueue;
     private final BlockingQueue<Runnable> clientManagerThreadPoolQueue;
+    /**
+     * 心跳线程队列
+     */
     private final BlockingQueue<Runnable> heartbeatThreadPoolQueue;
     private final BlockingQueue<Runnable> consumerManagerThreadPoolQueue;
     private final BlockingQueue<Runnable> endTransactionThreadPoolQueue;
@@ -190,6 +251,7 @@ public class BrokerController {
         this.clientHousekeepingService = new ClientHousekeepingService(this);
         this.broker2Client = new Broker2Client(this);
         this.subscriptionGroupManager = new SubscriptionGroupManager(this);
+        //基于Netty创建服务请求API
         this.brokerOuterAPI = new BrokerOuterAPI(nettyClientConfig);
         this.filterServerManager = new FilterServerManager(this);
 
@@ -544,6 +606,7 @@ public class BrokerController {
     }
 
     public void registerProcessor() {
+        //将各种处理器注册到NettyRemotingServer中，用于处理各种事件请求
         /**
          * SendMessageProcessor
          */
@@ -618,6 +681,7 @@ public class BrokerController {
 
         /**
          * Default
+         * 注册默认的处理器，负责处理创建，删除Topic等操作
          */
         AdminBrokerProcessor adminProcessor = new AdminBrokerProcessor(this);
         this.remotingServer.registerDefaultProcessor(adminProcessor, this.adminBrokerExecutor);
@@ -633,6 +697,7 @@ public class BrokerController {
     }
 
     public void protectBroker() {
+        //如果消费者消费过慢，则禁用消费组
         if (this.brokerConfig.isDisableConsumeIfConsumerReadSlowly()) {
             final Iterator<Map.Entry<String, MomentStatsItem>> it = this.brokerStatsManager.getMomentStatsItemSetFallSize().getStatsItemTable().entrySet().iterator();
             while (it.hasNext()) {
@@ -892,6 +957,7 @@ public class BrokerController {
             @Override
             public void run() {
                 try {
+                    //10-60秒的频率往所有NameSrv上注册一次Broker信息
                     BrokerController.this.registerBrokerAll(true, false, brokerConfig.isForceRegister());
                 } catch (Throwable e) {
                     log.error("registerBrokerAll Exception", e);

@@ -44,15 +44,25 @@ public class ProcessQueue {
     public final static long REBALANCE_LOCK_INTERVAL = Long.parseLong(System.getProperty("rocketmq.client.rebalance.lockInterval", "20000"));
     private final static long PULL_MAX_IDLE_TIME = Long.parseLong(System.getProperty("rocketmq.client.pull.pullMaxIdleTime", "120000"));
     private final InternalLogger log = ClientLogger.getLog();
+    /**
+     * 读写锁，用于控制多线程并发修改msgTreeMap，consumingMsgOrderlyTreeMap
+     */
     private final ReadWriteLock treeMapLock = new ReentrantReadWriteLock();
+    /**
+     * 存放消息的容器
+     * key= ConsumeQueue中的消息位移，value=消息内容
+     */
     private final TreeMap<Long, MessageExt> msgTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong msgCount = new AtomicLong();
     private final AtomicLong msgSize = new AtomicLong();
     private final Lock consumeLock = new ReentrantLock();
     /**
+     * 存放消息的容器，只有在处理有序消息时使用，消费者线程从msgTreeMap中取出消息前，先将消息临时存储在此容器中
+     * key= ConsumeQueue中的消息位移，value=消息内容
      * A subset of msgTreeMap, will only be used when orderly consume
      */
     private final TreeMap<Long, MessageExt> consumingMsgOrderlyTreeMap = new TreeMap<Long, MessageExt>();
+
     private final AtomicLong tryUnlockTimes = new AtomicLong(0);
     private volatile long queueOffsetMax = 0L;
     private volatile boolean dropped = false;
@@ -85,7 +95,10 @@ public class ProcessQueue {
             try {
                 this.treeMapLock.readLock().lockInterruptibly();
                 try {
-                    if (!msgTreeMap.isEmpty() && System.currentTimeMillis() - Long.parseLong(MessageAccessor.getConsumeStartTimeStamp(msgTreeMap.firstEntry().getValue())) > pushConsumer.getConsumeTimeout() * 60 * 1000) {
+                    long msgConsumerStartTime = Long.parseLong(MessageAccessor.getConsumeStartTimeStamp(msgTreeMap.firstEntry().getValue()));
+                    long consumerStartTime = System.currentTimeMillis() - msgConsumerStartTime;
+                    long pushConsumerTimeOut = pushConsumer.getConsumeTimeout() * 60 * 1000;
+                    if (!msgTreeMap.isEmpty() && pushConsumerTimeOut > consumerStartTime) {
                         msg = msgTreeMap.firstEntry().getValue();
                     } else {
 
@@ -135,9 +148,11 @@ public class ProcessQueue {
                     if (null == old) {
                         validMsgCnt++;
                         this.queueOffsetMax = msg.getQueueOffset();
+                        //记录消息体内容大小
                         msgSize.addAndGet(msg.getBody().length);
                     }
                 }
+                //记录有效的消息数量
                 msgCount.addAndGet(validMsgCnt);
 
                 if (!msgTreeMap.isEmpty() && !this.consuming) {
@@ -308,6 +323,7 @@ public class ProcessQueue {
                         Map.Entry<Long, MessageExt> entry = this.msgTreeMap.pollFirstEntry();
                         if (entry != null) {
                             result.add(entry.getValue());
+                            //放入一份数据到有序队列中
                             consumingMsgOrderlyTreeMap.put(entry.getKey(), entry.getValue());
                         } else {
                             break;

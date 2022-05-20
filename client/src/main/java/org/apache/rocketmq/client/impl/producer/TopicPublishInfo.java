@@ -23,11 +23,29 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
+/**
+ * Topic发布信息
+ */
 public class TopicPublishInfo {
+    /**
+     * 是否为有序Topic
+     */
     private boolean orderTopic = false;
+    /**
+     * 是否有Topic路由信息
+     */
     private boolean haveTopicRouterInfo = false;
+    /**
+     * Topic绑定的队列
+     */
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
+    /**
+     * 发送到哪个队列计数器
+     */
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
+    /**
+     * Topic路由数据
+     */
     private TopicRouteData topicRouteData;
 
     public boolean isOrderTopic() {
@@ -66,6 +84,11 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 选择可发送的队列
+     * @param lastBrokerName 如果brokerName不为空则说明lastBrokerName就是上次选择的执行发送消息失败的Broker
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
             return selectOneMessageQueue();

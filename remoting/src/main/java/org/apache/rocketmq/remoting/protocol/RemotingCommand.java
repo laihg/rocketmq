@@ -72,6 +72,7 @@ public class RemotingCommand {
     private int code;
     private LanguageCode language = LanguageCode.JAVA;
     private int version = 0;
+    //每次请求都进行原子自增
     private int opaque = requestId.getAndIncrement();
     private int flag = 0;
     private String remark;
@@ -303,6 +304,11 @@ public class RemotingCommand {
         return field;
     }
 
+    /**
+     * 获取字段是否允许为空，如果字段未使用注解标记，则说明字段允许为空，key=field，value=true，反之value=false。
+     * @param field 字段信息
+     * @return true：允许，false：不允许
+     */
     private boolean isFieldNullable(Field field) {
         if (!NULLABLE_FIELD_CACHE.containsKey(field)) {
             Annotation annotation = field.getAnnotation(CFNotNull.class);

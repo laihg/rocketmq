@@ -77,6 +77,17 @@ public class TopicConfigManager extends ConfigManager {
                 int perm = PermName.PERM_INHERIT | PermName.PERM_READ | PermName.PERM_WRITE;
                 topicConfig.setPerm(perm);
                 this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+
+                //手动加入Topic
+               /* String orderTopic = "order-topic-test";
+                TopicConfig orderTopicConfig = new TopicConfig(orderTopic);
+                orderTopicConfig.setReadQueueNums(this.brokerController.getBrokerConfig()
+                        .getDefaultTopicQueueNums());
+                orderTopicConfig.setWriteQueueNums(this.brokerController.getBrokerConfig()
+                        .getDefaultTopicQueueNums());
+                perm = PermName.PERM_INHERIT | PermName.PERM_READ | PermName.PERM_WRITE;
+                orderTopicConfig.setPerm(perm);
+                this.topicConfigTable.put(orderTopicConfig.getTopicName(), orderTopicConfig);*/
             }
         }
         {

@@ -53,11 +53,13 @@ public class MessageStoreConfig {
     private int commitIntervalCommitLog = 200;
 
     /**
+     * 存放消息时是否使用可重入锁，默认使用自旋锁
      * introduced since 4.0.x. Determine whether to use mutex reentrantLock when putting message.<br/>
      * By default it is set to false indicating using spin lock when putting message.
      */
     private boolean useReentrantLockWhenPutMessage = false;
 
+    //是否定时刷新，默认为实时
     // Whether schedule flush,default is real-time
     @ImportantField
     private boolean flushCommitLogTimed = false;
@@ -86,10 +88,16 @@ public class MessageStoreConfig {
     // This ensures no on-the-wire or on-disk corruption to the messages occurred.
     // This check adds some overhead,so it may be disabled in cases seeking extreme performance.
     private boolean checkCRCOnRecover = true;
+
+    //flush CommitLog 时要刷新多少页
     // How many pages are to be flushed when flush CommitLog
     private int flushCommitLogLeastPages = 4;
+
+    //提交数据到文件时要提交多少页
     // How many pages are to be committed when commit data to file
     private int commitCommitLogLeastPages = 4;
+
+    //磁盘处于预热状态时刷新页面大小
     // Flush page size when the disk in warming state
     private int flushLeastPagesWhenWarmMapedFile = 1024 / 4 * 16;
     // How many pages are to be flushed when flush ConsumeQueue
@@ -123,6 +131,10 @@ public class MessageStoreConfig {
     private int haSlaveFallbehindMax = 1024 * 1024 * 256;
     @ImportantField
     private BrokerRole brokerRole = BrokerRole.ASYNC_MASTER;
+
+    /**
+     * 数据写入磁盘方式默认为异步刷入
+     */
     @ImportantField
     private FlushDiskType flushDiskType = FlushDiskType.ASYNC_FLUSH;
     private int syncFlushTimeout = 1000 * 5;
@@ -615,6 +627,7 @@ public class MessageStoreConfig {
     }
 
     /**
+     * 仅当 transientStorePoolEnable 为 true 且 FlushDiskType 为 ASYNC_FLUSH 时才启用瞬态 commitLog 存储池
      * Enable transient commitLog store pool only if transientStorePoolEnable is true and the FlushDiskType is
      * ASYNC_FLUSH
      *

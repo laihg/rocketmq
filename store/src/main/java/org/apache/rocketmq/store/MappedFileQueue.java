@@ -35,15 +35,33 @@ public class MappedFileQueue {
 
     private static final int DELETE_FILES_BATCH_MAX = 10;
 
+    /**
+     * commit log存放目录
+     */
     private final String storePath;
 
+    /**
+     * 单个文件的存储大小
+     */
     private final int mappedFileSize;
 
+    /**
+     * commitlog文件夹下的文件列表
+     */
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
+    /**
+     * 分配文件服务
+     */
     private final AllocateMappedFileService allocateMappedFileService;
 
+    /**
+     * 当前刷盘指针，表示该指针之前的所有数据全部持久化到磁盘上了。
+     */
     private long flushedWhere = 0;
+    /**
+     * 当前数据提交指针，内存中ByteBuffer 当前的写指针，该值大于等于 flushedWhere
+     */
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
@@ -74,6 +92,14 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 根据时间戳查找MappedFile
+     * 1.先将所有的MappedFile拷贝一份，如果不存在MappedFile数据则说明commitLog目录下没有文件，直接返回空。
+     * 2.根据时间戳进行比对，获取与时间戳最相近的MappedFile
+     * 3.如果根据时间戳没有找到文件，则返回目录下最后一个文件
+     * @param timestamp
+     * @return
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -285,6 +311,10 @@ public class MappedFileQueue {
         return true;
     }
 
+    /**
+     * 获取当前commit目录下最小的消息偏移
+     * @return 队列中的文件不为空则返回第一个文件的起始位移，否则返回-1.
+     */
     public long getMinOffset() {
 
         if (!this.mappedFiles.isEmpty()) {
@@ -299,6 +329,10 @@ public class MappedFileQueue {
         return -1;
     }
 
+    /**
+     * 获取当前commit目录下最大的消息位移
+     * @return 如果MappedFile不为空则返回该文件的起始位移 + 已经使用的内存位置 = 最大消息位移，否则返回0.
+     */
     public long getMaxOffset() {
         MappedFile mappedFile = getLastMappedFile();
         if (mappedFile != null) {
@@ -307,6 +341,10 @@ public class MappedFileQueue {
         return 0;
     }
 
+    /**
+     *  获取当前commit目录下最大可写入的消息位移
+     * @return
+     */
     public long getMaxWrotePosition() {
         MappedFile mappedFile = getLastMappedFile();
         if (mappedFile != null) {
@@ -323,6 +361,9 @@ public class MappedFileQueue {
         return getMaxOffset() - flushedWhere;
     }
 
+    /**
+     *
+     */
     public void deleteLastMappedFile() {
         MappedFile lastMappedFile = getLastMappedFile();
         if (lastMappedFile != null) {
@@ -453,17 +494,21 @@ public class MappedFileQueue {
     }
 
     /**
+     * 根据偏移量查找MappedFile
      * Finds a mapped file by offset.
      *
      * @param offset Offset.
-     * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
+     * @param returnFirstOnNotFound If the mapped file is not found, then return the first one. 如果为true，且根据offset没有找到MappedFile，则返回第一个文件。
      * @return Mapped file or null (when not found and returnFirstOnNotFound is <code>false</code>).
      */
     public MappedFile findMappedFileByOffset(final long offset, final boolean returnFirstOnNotFound) {
         try {
+            //获取所有一个MappedFile
             MappedFile firstMappedFile = this.getFirstMappedFile();
+            //获取最后一个MappedFile
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
+                //如果指定的offset小于第一个MappedFile的起始位移或大于等于最后一个MappedFile的起始位移+文件固定大小则说明offset参数有误。
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
                     LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
                         offset,
@@ -472,6 +517,14 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    /**
+                     * 这里没有采用offset % mappedFileSize得到mappedFile是因为mappedFile使用了内存映射，只要存在于存储目录下的文件，
+                     * 都需要对应创建内存映射文件，如果不定时将已消费的消息从存储文件中删除，
+                     * 会造成极大的内存压力与资源浪费，所有 RocketMQ 采取定时删除存储文件的策略，
+                     * 也就是说在存储文件中，第一个文件不一定是 00000000000000000000 ，因为该文件在某一时刻会被删除
+                     */
+
+                    //使用(offset / 文件固定大小) - (第一个文件大小的起始offset / 文件固定大小)看能否定位到要找的mappedFile
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {

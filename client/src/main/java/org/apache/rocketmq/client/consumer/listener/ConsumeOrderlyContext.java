@@ -22,7 +22,13 @@ import org.apache.rocketmq.common.message.MessageQueue;
  * Consumer Orderly consumption context
  */
 public class ConsumeOrderlyContext {
+    /**
+     * 消费的队列信息
+     */
     private final MessageQueue messageQueue;
+    /**
+     * 自动提交消费位移
+     */
     private boolean autoCommit = true;
     private long suspendCurrentQueueTimeMillis = -1;
 

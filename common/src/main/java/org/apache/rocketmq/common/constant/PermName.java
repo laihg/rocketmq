@@ -16,10 +16,24 @@
  */
 package org.apache.rocketmq.common.constant;
 
+/**
+ * 权限类，Topic创建时，默认perm为6，表示有读写权限。
+ */
 public class PermName {
     public static final int PERM_PRIORITY = 0x1 << 3;
+    /**
+     * Topic读权限，值为4
+     */
     public static final int PERM_READ = 0x1 << 2;
+
+    /**
+     * Topic写权限，值为2
+     */
     public static final int PERM_WRITE = 0x1 << 1;
+
+    /**
+     * Topic继承，值为1
+     */
     public static final int PERM_INHERIT = 0x1;
 
     public static String perm2String(final int perm) {

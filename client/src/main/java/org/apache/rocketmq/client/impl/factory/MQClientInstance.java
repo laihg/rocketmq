@@ -91,15 +91,35 @@ public class MQClientInstance {
     private final int instanceIndex;
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
+    /**
+     * 存放注册的生产者信息
+     */
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
+    /**
+     * 存放注册的消费者信息
+     * key=消费组名称，value=消费者类型
+     */
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<String, MQAdminExtInner>();
     private final NettyClientConfig nettyClientConfig;
     private final MQClientAPIImpl mQClientAPIImpl;
     private final MQAdminImpl mQAdminImpl;
+    /**
+     * Topic -> Topic路由信息
+     */
     private final ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<String, TopicRouteData>();
+    /**
+     * Namesrv锁
+     */
     private final Lock lockNamesrv = new ReentrantLock();
+    /**
+     * 心跳锁
+     */
     private final Lock lockHeartbeat = new ReentrantLock();
+    /**
+     * Broker信息
+     * key:broker名称，value={key=brokerId, value=broker地址}
+     */
     private final ConcurrentMap<String/* Broker Name */, HashMap<Long/* brokerId */, String/* address */>> brokerAddrTable =
         new ConcurrentHashMap<String, HashMap<Long, String>>();
     private final ConcurrentMap<String/* Broker Name */, HashMap<String/* address */, Integer>> brokerVersionTable =
@@ -129,9 +149,12 @@ public class MQClientInstance {
         this.nettyClientConfig = new NettyClientConfig();
         this.nettyClientConfig.setClientCallbackExecutorThreads(clientConfig.getClientCallbackExecutorThreads());
         this.nettyClientConfig.setUseTLS(clientConfig.isUseTLS());
+        //创建客户端远程请求处理器
         this.clientRemotingProcessor = new ClientRemotingProcessor(this);
+        //客户端实现类
         this.mQClientAPIImpl = new MQClientAPIImpl(this.nettyClientConfig, this.clientRemotingProcessor, rpcHook, clientConfig);
 
+        //更新NameSrv地址
         if (this.clientConfig.getNamesrvAddr() != null) {
             this.mQClientAPIImpl.updateNameServerAddressList(this.clientConfig.getNamesrvAddr());
             log.info("user specified name server address: {}", this.clientConfig.getNamesrvAddr());
@@ -139,15 +162,22 @@ public class MQClientInstance {
 
         this.clientId = clientId;
 
+        //MQ管理实现类
         this.mQAdminImpl = new MQAdminImpl(this);
 
+        //拉取消息服务
         this.pullMessageService = new PullMessageService(this);
 
+        //Consumer再平衡
         this.rebalanceService = new RebalanceService(this);
 
+        //默认的MQ生产者
         this.defaultMQProducer = new DefaultMQProducer(MixAll.CLIENT_INNER_PRODUCER_GROUP);
+
+        //重置客户端配置
         this.defaultMQProducer.resetClientConfig(clientConfig);
 
+        //维护客户端管理器
         this.consumerStatsManager = new ConsumerStatsManager(this.scheduledExecutorService);
 
         log.info("Created a new client Instance, InstanceIndex:{}, ClientID:{}, ClientConfig:{}, ClientVersion:{}, SerializerType:{}",
@@ -193,6 +223,7 @@ public class MQClientInstance {
                         continue;
                     }
 
+                    //topic可写队列数量
                     for (int i = 0; i < qd.getWriteQueueNums(); i++) {
                         MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);
                         info.getMessageQueueList().add(mq);
@@ -227,12 +258,15 @@ public class MQClientInstance {
             switch (this.serviceState) {
                 case CREATE_JUST:
                     this.serviceState = ServiceState.START_FAILED;
+                    //如果NamesrvAddr为空，则加载
                     // If not specified,looking address from name server
                     if (null == this.clientConfig.getNamesrvAddr()) {
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
+                    //启动请求响应客户端
                     // Start request-response channel
                     this.mQClientAPIImpl.start();
+                    //启动定时调度任务
                     // Start various schedule tasks
                     this.startScheduledTask();
                     // Start pull service
@@ -254,6 +288,7 @@ public class MQClientInstance {
 
     private void startScheduledTask() {
         if (null == this.clientConfig.getNamesrvAddr()) {
+            //加载NameSrv add 10秒后执行，每隔2分钟执行一次
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
                 @Override
@@ -272,6 +307,7 @@ public class MQClientInstance {
             @Override
             public void run() {
                 try {
+                    //从NameSrv中加载Topic路由信息并更新
                     MQClientInstance.this.updateTopicRouteInfoFromNameServer();
                 } catch (Exception e) {
                     log.error("ScheduledTask updateTopicRouteInfoFromNameServer exception", e);
@@ -284,7 +320,9 @@ public class MQClientInstance {
             @Override
             public void run() {
                 try {
+                    //清除已经下线的Broker
                     MQClientInstance.this.cleanOfflineBroker();
+                    //给所有的Broker发送心跳
                     MQClientInstance.this.sendHeartbeatToAllBrokerWithLock();
                 } catch (Exception e) {
                     log.error("ScheduledTask sendHeartbeatToAllBroker exception", e);
@@ -408,6 +446,7 @@ public class MQClientInstance {
                         }
 
                         if (cloneAddrTable.isEmpty()) {
+                            //移除所有Broker
                             itBrokerTable.remove();
                             log.info("the broker[{}] name's host is offline, remove it", brokerName);
                         } else {
@@ -416,6 +455,7 @@ public class MQClientInstance {
                     }
 
                     if (!updatedTable.isEmpty()) {
+                        //更新Broker
                         this.brokerAddrTable.putAll(updatedTable);
                     }
                 } finally {
@@ -509,6 +549,11 @@ public class MQClientInstance {
         return updateTopicRouteInfoFromNameServer(topic, false, null);
     }
 
+    /**
+     * Broker是否存在Topic路由信息中
+     * @param addr Broker地址
+     * @return true:存在,false:不存在
+     */
     private boolean isBrokerAddrExistInTopicRouteTable(final String addr) {
         Iterator<Entry<String, TopicRouteData>> it = this.topicRouteTable.entrySet().iterator();
         while (it.hasNext()) {
@@ -602,6 +647,13 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 更新Topic路由信息
+     * @param topic topic名称
+     * @param isDefault
+     * @param defaultMQProducer
+     * @return
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
         DefaultMQProducer defaultMQProducer) {
         try {
@@ -631,6 +683,7 @@ public class MQClientInstance {
                         }
 
                         if (changed) {
+                            //拷贝一份数据操作，避免在高并发的场景下出现数据不一致的情况
                             TopicRouteData cloneTopicRouteData = topicRouteData.cloneTopicRouteData();
 
                             for (BrokerData bd : topicRouteData.getBrokerDatas()) {
@@ -646,6 +699,7 @@ public class MQClientInstance {
                                     Entry<String, MQProducerInner> entry = it.next();
                                     MQProducerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        //更新Topic发布信息
                                         impl.updateTopicPublishInfo(topic, publishInfo);
                                     }
                                 }
@@ -659,6 +713,7 @@ public class MQClientInstance {
                                     Entry<String, MQConsumerInner> entry = it.next();
                                     MQConsumerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        //更新Topic订阅信息
                                         impl.updateTopicSubscribeInfo(topic, subscribeInfo);
                                     }
                                 }

@@ -19,6 +19,13 @@ package org.apache.rocketmq.remoting.netty;
 
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * 响应回调处理
+ */
 public interface RemotingResponseCallback {
+    /**
+     * 回调处理
+     * @param response
+     */
     void callback(RemotingCommand response);
 }

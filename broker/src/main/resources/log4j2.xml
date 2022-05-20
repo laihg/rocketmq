@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="OFF">
+    <Properties>
+        <Property name="pattern">[rocketmq-broker][%-d{yy-MM-dd HH:mm:ss.SSS}] %5p [%t][%X{catMessageId}] %c{1.}.%M:%L -
+            %m%n
+        </Property>
+    </Properties>
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${pattern}"/>
+        </Console>
+        <CatAppender name="catAppender">
+            <ThresholdFilter level="error" onMatch="ACCEPT" onMismatch="DENY"/>
+        </CatAppender>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="Console"/>
+            <appender-ref ref="catAppender"/>
+        </Root>
+    </Loggers>
+</Configuration>

@@ -130,6 +130,7 @@ public class MessageClientIDSetter {
     }
 
     public static void setUniqID(final Message msg) {
+        //给消息绑定一个message id属性
         if (msg.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX) == null) {
             msg.putProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, createUniqID());
         }

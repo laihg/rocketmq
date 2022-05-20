@@ -110,6 +110,20 @@ public class BrokerOuterAPI {
         this.remotingClient.updateNameServerAddressList(lst);
     }
 
+    /**
+     * 往所有NameSrv上注册Broker
+     * @param clusterName 集群名称
+     * @param brokerAddr broker地址
+     * @param brokerName broker名称
+     * @param brokerId brokerId
+     * @param haServerAddr 高可用服务地址
+     * @param topicConfigWrapper topic配置
+     * @param filterServerList 服务过滤列表
+     * @param oneway 是否为单次发送
+     * @param timeoutMills
+     * @param compressed 是否压缩
+     * @return
+     */
     public List<RegisterBrokerResult> registerBrokerAll(
         final String clusterName,
         final String brokerAddr,

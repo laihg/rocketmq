@@ -122,6 +122,7 @@ public abstract class ServiceThread implements Runnable {
 
     public void wakeup() {
         if (hasNotified.compareAndSet(false, true)) {
+            //如果更新成功，则释放锁
             waitPoint.countDown(); // notify
         }
     }

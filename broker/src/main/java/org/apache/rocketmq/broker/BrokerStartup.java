@@ -108,6 +108,8 @@ public class BrokerStartup {
             }
 
             final BrokerConfig brokerConfig = new BrokerConfig();
+            brokerConfig.setBrokerClusterName("SH");
+
             final NettyServerConfig nettyServerConfig = new NettyServerConfig();
             final NettyClientConfig nettyClientConfig = new NettyClientConfig();
 
@@ -115,7 +117,15 @@ public class BrokerStartup {
                 String.valueOf(TlsSystemConfig.tlsMode == TlsMode.ENFORCING))));
             nettyServerConfig.setListenPort(10911);
             final MessageStoreConfig messageStoreConfig = new MessageStoreConfig();
+            //messageStoreConfig.setStorePathRootDir("C:\\Users\\Administrator\\store2");
 
+            boolean enableFollowerBroker = Boolean.parseBoolean(System.getProperty("enable.follower.broker"));
+            if (enableFollowerBroker) {
+                brokerConfig.setBrokerId(1L);
+                //brokerConfig.setBrokerName("WEIMOB-LIGHT2");
+                nettyServerConfig.setListenPort(10918);
+                messageStoreConfig.setBrokerRole(BrokerRole.SLAVE);
+            }
             if (BrokerRole.SLAVE == messageStoreConfig.getBrokerRole()) {
                 int ratio = messageStoreConfig.getAccessMessageInMemoryMaxRatio() - 10;
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);

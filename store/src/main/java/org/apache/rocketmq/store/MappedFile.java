@@ -41,28 +41,72 @@ import org.apache.rocketmq.store.config.FlushDiskType;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * 实际存放消息的文件，所有的topic消息都是放在这个文件中，所以消息顺序是不连续的。
+ * 这种方式让Consumer在拉取消息时，挨个去查找性能很低。 所以RocketMQ将单个Topic的消息存储在对应的ConsumeQueue下，保证有序。
+ */
 public class MappedFile extends ReferenceResource {
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
 
+    /**
+     * 总共映射的文件数量
+     */
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
+    /**
+     * 写入的位置
+     */
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
+    /**
+     * 提交的位置
+     */
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
+    /**
+     * 刷新的位置
+     */
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
+    /**
+     * 文件大小
+     */
     protected int fileSize;
+    /**
+     * 文件管道
+     */
     protected FileChannel fileChannel;
     /**
+     * 消息在第一步会放入缓存中，如果writeBuffer不为空再放入FileChannel中
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
     protected ByteBuffer writeBuffer = null;
+    /**
+     * 短暂的存储池
+     */
     protected TransientStorePool transientStorePool = null;
     private String fileName;
+    /**
+     * 文件起始位移，实际就是文件名称
+     */
     private long fileFromOffset;
+    /**
+     * 物理文件
+     */
     private File file;
+
+    /**
+     *物理文件对应的内存映射 Buffer
+     */
     private MappedByteBuffer mappedByteBuffer;
+
+    /**
+     * 文件最后一次内容写入时间
+     */
     private volatile long storeTimestamp = 0;
+
+    /**
+     * 是否是 MappedFileQueue 队列中第一个文件
+     */
     private boolean firstCreateInQueue = false;
 
     public MappedFile() {
@@ -201,7 +245,7 @@ public class MappedFile extends ReferenceResource {
         assert cb != null;
 
         int currentPos = this.wrotePosition.get();
-
+        //如果currentPos小于文件大小，通过slice()方法创建1个与MappedFile的共享存区，并设置position为当前指针
         if (currentPos < this.fileSize) {
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             byteBuffer.position(currentPos);
@@ -217,6 +261,7 @@ public class MappedFile extends ReferenceResource {
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
         }
+        //大于或等于文件大小则说明文件已写满
         log.error("MappedFile.appendMessage return null, wrotePosition: {} fileSize: {}", currentPos, this.fileSize);
         return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
     }
@@ -266,6 +311,7 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
+     * 将内存中的据刷写到磁,永久存储在磁盘中
      * @return The current flushed position
      */
     public int flush(final int flushLeastPages) {
@@ -335,15 +381,22 @@ public class MappedFile extends ReferenceResource {
         }
     }
 
+    /**
+     * 是否可刷入数据
+     * @param flushLeastPages
+     * @return
+     */
     private boolean isAbleToFlush(final int flushLeastPages) {
         int flush = this.flushedPosition.get();
         int write = getReadPosition();
-
+        //note 已经满了，还能允许写入？？
         if (this.isFull()) {
             return true;
         }
 
         if (flushLeastPages > 0) {
+            //写入位置/系统页大小(4K) - 刷新的位置/系统页大小(4K) >= 刷新的页数
+            //如果大于等于则说明可刷入
             return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= flushLeastPages;
         }
 
